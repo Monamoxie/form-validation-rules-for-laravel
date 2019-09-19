@@ -425,3 +425,232 @@ The field under validation must be a valid URL.
 uuid
 
 The field under validation must be a valid RFC 4122 (version 1, 3, 4, or 5) universally unique identifier (UUID).
+
+
+
+
+Conditionally Adding Rules
+Validating When Present
+
+In some situations, you may wish to run validation checks against a field only if that field is present in the input array. To quickly accomplish this, add the sometimes rule to your rule list:
+
+$v = Validator::make($data, [
+    'email' => 'sometimes|required|email',
+]);
+
+In the example above, the email field will only be validated if it is present in the $data array.
+
+    If you are attempting to validate a field that should always be present but may be empty, check out this note on optional fields
+
+Complex Conditional Validation
+
+Sometimes you may wish to add validation rules based on more complex conditional logic. For example, you may wish to require a given field only if another field has a greater value than 100. Or, you may need two fields to have a given value only when another field is present. Adding these validation rules doesn't have to be a pain. First, create a Validator instance with your static rules that never change:
+
+$v = Validator::make($data, [
+    'email' => 'required|email',
+    'games' => 'required|numeric',
+]);
+
+Let's assume our web application is for game collectors. If a game collector registers with our application and they own more than 100 games, we want them to explain why they own so many games. For example, perhaps they run a game resale shop, or maybe they just enjoy collecting. To conditionally add this requirement, we can use the sometimes method on the Validator instance.
+
+$v->sometimes('reason', 'required|max:500', function ($input) {
+    return $input->games >= 100;
+});
+
+The first argument passed to the sometimes method is the name of the field we are conditionally validating. The second argument is the rules we want to add. If the Closure passed as the third argument returns true, the rules will be added. This method makes it a breeze to build complex conditional validations. You may even add conditional validations for several fields at once:
+
+$v->sometimes(['reason', 'cost'], 'required', function ($input) {
+    return $input->games >= 100;
+});
+
+    The $input parameter passed to your Closure will be an instance of Illuminate\Support\Fluent and may be used to access your input and files.
+
+Validating Arrays
+
+Validating array based form input fields doesn't have to be a pain. You may use "dot notation" to validate attributes within an array. For example, if the incoming HTTP request contains a photos[profile] field, you may validate it like so:
+
+$validator = Validator::make($request->all(), [
+    'photos.profile' => 'required|image',
+]);
+
+You may also validate each element of an array. For example, to validate that each e-mail in a given array input field is unique, you may do the following:
+
+$validator = Validator::make($request->all(), [
+    'person.*.email' => 'email|unique:users',
+    'person.*.first_name' => 'required_with:person.*.last_name',
+]);
+
+Likewise, you may use the * character when specifying your validation messages in your language files, making it a breeze to use a single validation message for array based fields:
+
+'custom' => [
+    'person.*.email' => [
+        'unique' => 'Each person must have a unique e-mail address',
+    ]
+],
+
+Custom Validation Rules
+
+Using Rule Objects
+
+Laravel provides a variety of helpful validation rules; however, you may wish to specify some of your own. One method of registering custom validation rules is using rule objects. To generate a new rule object, you may use the make:rule Artisan command. Let's use this command to generate a rule that verifies a string is uppercase. Laravel will place the new rule in the app/Rules directory:
+
+php artisan make:rule Uppercase
+
+Once the rule has been created, we are ready to define its behavior. A rule object contains two methods: passes and message. The passes method receives the attribute value and name, and should return true or false depending on whether the attribute value is valid or not. The message method should return the validation error message that should be used when validation fails:
+
+<?php
+
+namespace App\Rules;
+
+use Illuminate\Contracts\Validation\Rule;
+
+class Uppercase implements Rule
+{
+    /**
+     * Determine if the validation rule passes.
+     *
+     * @param  string  $attribute
+     * @param  mixed  $value
+     * @return bool
+     */
+    public function passes($attribute, $value)
+    {
+        return strtoupper($value) === $value;
+    }
+
+    /**
+     * Get the validation error message.
+     *
+     * @return string
+     */
+    public function message()
+    {
+        return 'The :attribute must be uppercase.';
+    }
+}
+
+You may call the trans helper from your message method if you would like to return an error message from your translation files:
+
+/**
+ * Get the validation error message.
+ *
+ * @return string
+ */
+public function message()
+{
+    return trans('validation.uppercase');
+}
+
+Once the rule has been defined, you may attach it to a validator by passing an instance of the rule object with your other validation rules:
+
+use App\Rules\Uppercase;
+
+$request->validate([
+    'name' => ['required', 'string', new Uppercase],
+]);
+
+Using Closures
+
+If you only need the functionality of a custom rule once throughout your application, you may use a Closure instead of a rule object. The Closure receives the attribute's name, the attribute's value, and a $fail callback that should be called if validation fails:
+
+$validator = Validator::make($request->all(), [
+    'title' => [
+        'required',
+        'max:255',
+        function ($attribute, $value, $fail) {
+            if ($value === 'foo') {
+                $fail($attribute.' is invalid.');
+            }
+        },
+    ],
+]);
+
+Using Extensions
+
+Another method of registering custom validation rules is using the extend method on the Validator facade. Let's use this method within a service provider to register a custom validation rule:
+
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Validator;
+
+class AppServiceProvider extends ServiceProvider
+{
+    /**
+     * Register any application services.
+     *
+     * @return void
+     */
+    public function register()
+    {
+        //
+    }
+
+    /**
+     * Bootstrap any application services.
+     *
+     * @return void
+     */
+    public function boot()
+    {
+        Validator::extend('foo', function ($attribute, $value, $parameters, $validator) {
+            return $value == 'foo';
+        });
+    }
+}
+
+The custom validator Closure receives four arguments: the name of the $attribute being validated, the $value of the attribute, an array of $parameters passed to the rule, and the Validator instance.
+
+You may also pass a class and method to the extend method instead of a Closure:
+
+Validator::extend('foo', 'FooValidator@validate');
+
+Defining The Error Message
+
+You will also need to define an error message for your custom rule. You can do so either using an inline custom message array or by adding an entry in the validation language file. This message should be placed in the first level of the array, not within the custom array, which is only for attribute-specific error messages:
+
+"foo" => "Your input was invalid!",
+
+"accepted" => "The :attribute must be accepted.",
+
+// The rest of the validation error messages...
+
+When creating a custom validation rule, you may sometimes need to define custom placeholder replacements for error messages. You may do so by creating a custom Validator as described above then making a call to the replacer method on the Validator facade. You may do this within the boot method of a service provider:
+
+/**
+ * Bootstrap any application services.
+ *
+ * @return void
+ */
+public function boot()
+{
+    Validator::extend(...);
+
+    Validator::replacer('foo', function ($message, $attribute, $rule, $parameters) {
+        return str_replace(...);
+    });
+}
+
+Implicit Extensions
+
+By default, when an attribute being validated is not present or contains an empty string, normal validation rules, including custom extensions, are not run. For example, the unique rule will not be run against an empty string:
+
+$rules = ['name' => 'unique:users,name'];
+
+$input = ['name' => ''];
+
+Validator::make($input, $rules)->passes(); // true
+
+For a rule to run even when an attribute is empty, the rule must imply that the attribute is required. To create such an "implicit" extension, use the Validator::extendImplicit() method:
+
+Validator::extendImplicit('foo', function ($attribute, $value, $parameters, $validator) {
+    return $value == 'foo';
+});
+
+    An "implicit" extension only implies that the attribute is required. Whether it actually invalidates a missing or empty attribute is up to you.
+
+Implicit Rule Objects
+
+If you would like a rule object to run when an attribute is empty, you should implement the Illuminate\Contracts\Validation\ImplicitRule interface. This interface serves as a "marker interface" for the validator; therefore, it does not contain any methods you need to implement.
