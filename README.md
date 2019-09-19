@@ -1,7 +1,7 @@
 # A LIST OF FORM VALIDATION RULES FOR LARAVEL
 A quick reference I run and check when working on complex form validations rules with laravel. Tips are from the official laravel documentation
 
-#accepted
+**accepted**
 
 The field under validation must be yes, on, 1, or true. This is useful for validating "Terms of Service" acceptance.
 
